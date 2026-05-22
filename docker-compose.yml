@@ -67,8 +67,8 @@ services:
       - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
       # Pass the RUN_ID to the entrypoint script
       - RUN_ID=${RUN_ID:-default_run_id}
-    volumes:
-      - app_storage:/app/storage
+    # volumes:
+    #   - app_storage:/app/storage
     depends_on:
       - minio
     networks:

@@ -4,10 +4,11 @@ pipeline {
     environment {
         AWS_ACCESS_KEY_ID     = credentials('minio-access-key')
         AWS_SECRET_ACCESS_KEY = credentials('minio-secret-key')
-        MLFLOW_TRACKING_URI   = "http://mlflow:5000"
+        // MLFLOW_TRACKING_URI   = "http://mlflow:5000"
         VENV                  = ".venv"
         // Define your Docker Hub or local registry (optional but best practice)
         DOCKER_IMAGE_NAME     = "hamza629/mlops-api"
+        HF_TOKEN              = credentials('hf-token')
     }
 
     stages {
@@ -70,13 +71,17 @@ pipeline {
                 echo "Initiating Ray Distributed Training..."
                 sh '''
                     . ${VENV}/bin/activate
+                    
+                    # Export the Hugging Face token so the Ray script can see it
+                    export HF_TOKEN=${HF_TOKEN}
+                    
                     python -m madewithml.train \
                         --experiment-name "ci_cd_production" \
                         --dataset-loc "datasets/dataset.csv" \
                         --num-workers 1 \
                         --cpu-per-worker 4 \
                         --num-epochs 1 \
-                        --batch-size 256 \
+                        --batch-size 32 \
                         --results-fp results.json
                 '''
             }

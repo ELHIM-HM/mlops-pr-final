@@ -78,16 +78,19 @@ pipeline {
                 sh '''
                     . ${VENV}/bin/activate
                     
-                    # Export the Hugging Face token so the Ray script can see it
                     export HF_TOKEN=${HF_TOKEN}
                     
+                    # Hard-limit Ray's internal memory storage to prevent OOM crashes
+                    export RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.3
+                    
+                    # Extreme diet settings for CI/CD pipeline validation
                     python -m madewithml.train \
                         --experiment-name "ci_cd_production" \
                         --dataset-loc "datasets/dataset.csv" \
                         --num-workers 1 \
-                        --cpu-per-worker 4 \
+                        --cpu-per-worker 2 \
                         --num-epochs 1 \
-                        --batch-size 32 \
+                        --batch-size 8 \
                         --results-fp results.json
                 '''
             }

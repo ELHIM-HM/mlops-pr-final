@@ -17,8 +17,8 @@ RUN apt-get update && apt-get install -y \
 # Copy the requirements file first to leverage Docker layer caching
 COPY requirements.txt .
 
-# Install Python dependencies (ignoring cache to keep image size small)
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies, forcing the much smaller CPU-only version of PyTorch
+RUN pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Copy the entire project code into the container
 COPY . .

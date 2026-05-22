@@ -4,7 +4,7 @@ pipeline {
     environment {
         AWS_ACCESS_KEY_ID     = credentials('minio-access-key')
         AWS_SECRET_ACCESS_KEY = credentials('minio-secret-key')
-        MLFLOW_TRACKING_URI   = "http://localhost:5000"
+        MLFLOW_TRACKING_URI   = "http://mlflow:5000"
         VENV                  = ".venv"
         // Define your Docker Hub or local registry (optional but best practice)
         DOCKER_IMAGE_NAME     = "hamza629/mlops-api"
@@ -52,10 +52,12 @@ pipeline {
                 echo "Pulling and validating data..."
                 sh '''
                     . ${VENV}/bin/activate
-                    dvc pull
                     
-                    # Best Practice: Run a quick script to ensure the dataset isn't corrupted
-                    # python scripts/validate_data.py --dataset datasets/dataset.csv
+                    # DevOps Magic: Dynamically switch DVC from localhost to the Docker minio container
+                    sed -i 's/localhost:9000/minio:9000/g' .dvc/config
+                    
+                    # Now pull the data
+                    dvc pull
                 '''
             }
         }

@@ -1,12 +1,10 @@
-# tests/test_models.py
 import pytest
 import torch
-from transformers import BertModel
+from transformers import BertModel, BertConfig
 from madewithml.models import FinetunedLLM
 
 @pytest.fixture
 def mock_batch():
-    """Create a fake batch of tokenized data to pass through the model."""
     batch_size = 4
     seq_length = 10
     return {
@@ -16,17 +14,22 @@ def mock_batch():
     }
 
 def test_model_forward_pass(mock_batch):
-    """Ensure the neural network outputs the correct tensor shapes."""
     num_classes = 3
     embedding_dim = 768
     
-    # Initialize the base BERT model and our custom wrapper
-    llm = BertModel.from_pretrained("allenai/scibert_scivocab_uncased", return_dict=False)
+    # DevOps Magic: Create a tiny, untrained dummy model instantly in memory
+    # This prevents Jenkins from downloading 400MB from Hugging Face during tests!
+    dummy_config = BertConfig(
+        vocab_size=1000, 
+        hidden_size=embedding_dim, 
+        num_hidden_layers=2, 
+        num_attention_heads=2
+    )
+    llm = BertModel(dummy_config)
+    
     model = FinetunedLLM(llm=llm, dropout_p=0.5, embedding_dim=embedding_dim, num_classes=num_classes)
     
-    # Run the fake data through the forward pass
     logits = model(mock_batch)
     
-    # We expect the output shape to be [Batch Size, Number of Classes]
     assert logits.shape == (4, num_classes)
     assert isinstance(logits, torch.Tensor)

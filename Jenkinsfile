@@ -82,7 +82,7 @@ pipeline {
                     export RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.3
                     
                     # DevOps Magic: Extract the header + first 100 rows into a new file
-                    head -n 20 datasets/dataset.csv > datasets/smoke_test_dataset.csv
+                    head -n 100 datasets/dataset.csv > datasets/smoke_test_dataset.csv
                     
                     # Train on the tiny smoke test dataset instead of the massive one
                     python -m madewithml.train \

@@ -47,9 +47,12 @@ pipeline {
                 sh '''
                     . ${VENV}/bin/activate
                     
-                    # 1. Lint the code (using --exit-zero so formatting doesn't crash the build)
+                    # 1. Linting
                     flake8 madewithml/ --exit-zero
                     
+                    # 2. Run all tests in the tests/ folder
+                    # This automatically runs test_data.py, test_models.py, and test_serve.py
+                    pytest tests/ -v -s
                 '''
             }
         }
@@ -135,17 +138,32 @@ pipeline {
 
         stage('Deploy to Production') {
             steps {
-                echo "Rolling out new API version for RUN_ID: ${RUN_ID}..."
+                echo "Rolling out version ${RUN_ID}..."
                 sh '''
+                    # Force these variables into the environment for the sub-process
                     export RUN_ID=${RUN_ID}
                     export DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME}
                     
-                    # 1. Stop and remove the old container explicitly 
-                    # This handles cases where docker-compose gets confused
+                    # 1. Kill old one
                     docker rm -f mlops_api || true
                     
-                    # 2. Start the new API
+                    # 2. Deploy
                     docker-compose up -d --force-recreate --no-deps api
+                '''
+            }
+        }
+
+        stage('Post-Deployment Sanity Checks') {
+            steps {
+                echo "Running API integration tests..."
+                sh '''
+                    . ${VENV}/bin/activate
+                    
+                    # Give the API a few seconds to boot up before testing
+                    sleep 5
+                    
+                    # Run the serving tests
+                    pytest tests/test_serve.py -v
                 '''
             }
         }

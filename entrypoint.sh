@@ -3,14 +3,9 @@
 set -e
 
 echo "========================================"
-echo "1. Fetching Datasets from MinIO..."
+echo "Starting FastAPI & Ray Serve..."
 echo "========================================"
-# DVC will use the credentials injected by docker-compose to pull the CSVs
-dvc pull
 
-echo "========================================"
-echo "2. Starting FastAPI & Ray Serve..."
-echo "========================================"
-# We use the $RUN_ID environment variable (which we will define in docker-compose)
-# to tell the API exactly which trained model to load from MLflow.
+# We assume the model/data is already inside the container
+# because we copied it during the docker build phase.
 exec python madewithml/serve.py --run_id "$RUN_ID"

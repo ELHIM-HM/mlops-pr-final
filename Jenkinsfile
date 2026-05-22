@@ -74,8 +74,8 @@ pipeline {
                         --dataset-loc "datasets/dataset.csv" \
                         --num-workers 1 \
                         --cpu-per-worker 4 \
-                        --num-epochs 5 \
-                        --batch-size 64 \
+                        --num-epochs 1 \
+                        --batch-size 256 \
                         --results-fp results.json
                 '''
             }

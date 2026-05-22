@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 
+import mlflow
 import numpy as np
 import ray
 import ray.train as train
@@ -18,8 +19,6 @@ from ray.train import (
     RunConfig,
     ScalingConfig,
 )
-# Modern Ray API: integrations moved from ray.air to ray.train
-from ray.train.mlflow import MLflowLoggerCallback
 from ray.train.torch import TorchTrainer
 from torch.nn.parallel.distributed import DistributedDataParallel
 from transformers import BertModel
@@ -94,12 +93,12 @@ def eval_step(
     return float(loss), np.vstack(y_trues), np.vstack(y_preds)
 
 
-def train_loop_per_worker(config: dict[str, float | int]) -> None:
+def train_loop_per_worker(config: dict[str, float | int | str]) -> None:
     """
     The core loop executed by EVERY distributed worker (CPU or GPU).
     Ray Train handles copying this across your cluster/container automatically.
     """
-    # Hyperparameters
+    # Hyperparameters successfully unpacked from our updated config_dict
     dropout_p = config["dropout_p"]
     lr = config["lr"]
     lr_factor = config["lr_factor"]
@@ -107,6 +106,17 @@ def train_loop_per_worker(config: dict[str, float | int]) -> None:
     num_epochs = config["num_epochs"]
     batch_size = config["batch_size"]
     num_classes = config["num_classes"]
+    experiment_name = config["experiment_name"]
+
+    # ====================================================================
+    # MLFLOW INTEGRATION: Initialize tracking ONLY on the master worker
+    # ====================================================================
+    is_master = train.get_context().get_world_rank() == 0
+    if is_master:
+        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+        mlflow.set_experiment(experiment_name)
+        mlflow.start_run()
+        mlflow.log_params(config)
 
     # Get data specifically assigned to this worker
     utils.set_seeds()
@@ -137,7 +147,17 @@ def train_loop_per_worker(config: dict[str, float | int]) -> None:
         # 2. Adjust Learning Rate based on validation plateau
         scheduler.step(val_loss)
 
-        # 3. Save Checkpoints and Report Metrics to Ray/MLflow
+        # ====================================================================
+        # MLFLOW INTEGRATION: Log metrics per epoch
+        # ====================================================================
+        if is_master:
+            mlflow.log_metrics({
+                "train_loss": train_loss, 
+                "val_loss": val_loss,
+                "lr": optimizer.param_groups[0]["lr"]
+            }, step=epoch)
+
+        # 3. Save Checkpoints and Report Metrics to Ray
         with tempfile.TemporaryDirectory() as dp:
             # Handle standard vs DistributedDataParallel (DDP) wrappers
             if isinstance(model, DistributedDataParallel):
@@ -156,6 +176,12 @@ def train_loop_per_worker(config: dict[str, float | int]) -> None:
             checkpoint = Checkpoint.from_directory(dp)
             train.report(metrics, checkpoint=checkpoint)
 
+    # ====================================================================
+    # MLFLOW INTEGRATION: Close the run safely
+    # ====================================================================
+    if is_master:
+        mlflow.end_run()
+
 
 @app.command()
 def train_model(
@@ -172,12 +198,21 @@ def train_model(
 ) -> ray.train.Result:
     """Main function to launch the distributed training workload via Ray Train."""
     
-    # Parse hyperparams
+    # Parse hyperparams from CLI
     config_dict = json.loads(train_loop_config)
+    
+    # Inject default model hyperparameters so the worker doesn't throw a KeyError
+    config_dict.setdefault("dropout_p", 0.5)
+    config_dict.setdefault("lr", 1e-4)
+    config_dict.setdefault("lr_factor", 0.8)
+    config_dict.setdefault("lr_patience", 3)
+    
+    # Inject CLI args (Including experiment_name for MLflow)
     config_dict.update({
         "num_samples": num_samples,
         "num_epochs": num_epochs,
-        "batch_size": batch_size
+        "batch_size": batch_size,
+        "experiment_name": experiment_name
     })
 
     # 1. Define hardware resources for the cluster
@@ -187,23 +222,16 @@ def train_model(
         resources_per_worker={"CPU": cpu_per_worker, "GPU": gpu_per_worker},
     )
 
-    # 2. Define MLflow and Checkpoint configurations
+    # 2. Define Checkpoint configurations
     checkpoint_config = CheckpointConfig(
         num_to_keep=1,  # Only keep the absolute best model to save disk space
         checkpoint_score_attribute="val_loss",
         checkpoint_score_order="min",
     )
 
-    mlflow_callback = MLflowLoggerCallback(
-        tracking_uri=MLFLOW_TRACKING_URI,
-        experiment_name=experiment_name,
-        save_artifact=True,
-    )
-
     # Use settings.efs_dir for cross-environment compatibility (Docker vs Local)
     storage_path = str(settings.efs_dir)
     run_config = RunConfig(
-        callbacks=[mlflow_callback], 
         checkpoint_config=checkpoint_config, 
         storage_path=storage_path, 
         name=experiment_name
@@ -234,18 +262,26 @@ def train_model(
         run_config=run_config,
         datasets={"train": train_ds, "val": val_ds},
         dataset_config=dataset_config,
-        metadata={"class_to_index": preprocessor.class_to_index},
     )
 
     results = trainer.fit()
     
-    # 5. Format outputs
+    # 5. Format outputs & Fetch MLflow ID
     metrics_dict = results.metrics_dataframe.to_dict() if not results.metrics_dataframe.empty else {}
+    
+    # Automatically search the local MLflow registry for the exact Run ID
+    run_id = "unknown"
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    experiment = mlflow.get_experiment_by_name(experiment_name)
+    if experiment:
+        runs = mlflow.search_runs(experiment_ids=[experiment.experiment_id], order_by=["start_time DESC"], max_results=1)
+        if not runs.empty:
+            run_id = runs.iloc[0]["run_id"]
     
     d = {
         "timestamp": datetime.datetime.now().strftime("%B %d, %Y %I:%M:%S %p"),
-        "run_id": utils.get_run_id(experiment_name=experiment_name, trial_id=results.metrics["trial_id"]),
-        "params": results.config["train_loop_config"],
+        "run_id": run_id,
+        "params": config_dict,
         "metrics": utils.dict_to_list(metrics_dict, keys=["epoch", "train_loss", "val_loss"]) if metrics_dict else [],
     }
     

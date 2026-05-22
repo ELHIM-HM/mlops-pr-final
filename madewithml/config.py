@@ -3,36 +3,62 @@ import logging.config
 import os
 import sys
 from pathlib import Path
+
 from pydantic_settings import BaseSettings
 
 # Base directories
 ROOT_DIR = Path(__file__).parent.parent.absolute()
 
+
 class Settings(BaseSettings):
-    """Modern configuration management using Pydantic."""
-    environment: str = "local"  # e.g., 'local', 'docker', 'prod'
+    """
+    Modern configuration management using Pydantic.
+    Pydantic automatically prioritizes system environment variables (Jenkins)
+    over the .env file.
+    """
+    environment: str = "local"  # e.g., 'local', 'docker', 'ci'
     
-    # Default to a local folder, but let Docker override this via environment variables
-    # e.g., ENV EFS_DIR=/app/storage in Dockerfile
+    # Storage and Data
     efs_dir: Path = ROOT_DIR / "storage" 
     
+    # Infrastructure Endpoints (Overridable by Jenkins)
+    minio_endpoint: str = "http://localhost:9000"
+    mlflow_tracking_uri: str = ""  # Leave empty locally to trigger the Windows fix below
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"  # CRITICAL FOR JENKINS: Ignores random CI system variables
+
 
 settings = Settings()
 
 # Ensure shared storage directories exist (Crucial for Ray/MLflow in Docker)
 settings.efs_dir.mkdir(parents=True, exist_ok=True)
 
-# Config MLflow
+
+# ====================================================================
+# MLFLOW DYNAMIC URI LOGIC (Jenkins + Windows Fix)
+# ====================================================================
 import mlflow
-MODEL_REGISTRY = settings.efs_dir / "mlflow"
-MODEL_REGISTRY.mkdir(parents=True, exist_ok=True)
-MLFLOW_TRACKING_URI = f"file://{MODEL_REGISTRY.absolute()}"
+
+if settings.mlflow_tracking_uri:
+    # If Jenkins explicitly passes a remote MLFLOW_TRACKING_URI, use it.
+    MLFLOW_TRACKING_URI = settings.mlflow_tracking_uri
+else:
+    # Safely fall back to the local Windows SQLite database format.
+    local_mlflow_dir = settings.efs_dir / "mlflow"
+    local_mlflow_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Force the correct 3-slash format for local Windows file URIs
+    MLFLOW_TRACKING_URI = "file:///" + local_mlflow_dir.as_posix()
+
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
-# Docker-ready Logger Setup
+
+# ====================================================================
+# LOGGER SETUP (Docker & Local)
+# ====================================================================
 # We only use StreamHandler (stdout) when in Docker
 handlers = {
     "console": {
@@ -75,9 +101,10 @@ logging_config = {
 logging.config.dictConfig(logging_config)
 logger = logging.getLogger(__name__)
 
-# Stopwords list remains the same below...
 
-# Stopwords list remains the same (omitted for brevity, but you would keep it here as a native list)
+# ====================================================================
+# STOPWORDS
+# ====================================================================
 STOPWORDS = [
     "i",
     "me",

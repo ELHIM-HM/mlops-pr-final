@@ -62,7 +62,7 @@ services:
       - EFS_DIR=/app/storage
       # Spoof AWS credentials so DVC and MLflow can talk to MinIO securely
       - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER:-admin}
-      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-password123}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-123456789}
       - AWS_DEFAULT_REGION=us-east-1
       - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
       # Pass the RUN_ID to the entrypoint script
@@ -74,12 +74,30 @@ services:
     networks:
       - mlops_net
 
+  jenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
+    container_name: jenkins_mlops
+    user: root # Required to access the host's Docker socket
+    ports:
+      - "8090:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_data:/var/jenkins_home
+      # Mount the Docker socket so Jenkins can build your API container
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    networks:
+      - mlops_net
+
 # Define persistent volumes so data survives container restarts
 volumes:
   minio_data:
   prometheus_data:
   grafana_data:
   app_storage:
+  jenkins_data:
 
 # Define a custom bridge network so containers can talk to each other by name
 networks:

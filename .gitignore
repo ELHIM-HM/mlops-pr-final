@@ -58,3 +58,6 @@ htmlcov/
 *.swp
 *.swo
 /datasets
+
+
+python madewithml/train.py --experiment-name "production_baseline" --dataset-loc "datasets/dataset.csv" --num-workers 1 --cpu-per-worker 4 --num-epochs 1 --batch-size 64

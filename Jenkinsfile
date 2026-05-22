@@ -47,11 +47,13 @@ pipeline {
                 sh '''
                     . ${VENV}/bin/activate
                     
-                    # 1. Linting
+                    # 1. Tell Python to look in the current folder for modules
+                    export PYTHONPATH=$PYTHONPATH:.
+                    
+                    # 2. Linting
                     flake8 madewithml/ --exit-zero
                     
-                    # 2. Run all tests in the tests/ folder
-                    # This automatically runs test_data.py, test_models.py, and test_serve.py
+                    # 3. Run tests
                     pytest tests/ -v -s
                 '''
             }

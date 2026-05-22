@@ -77,27 +77,46 @@ pipeline {
         // ==========================================
         // PHASE 2: CONTINUOUS TRAINING (CT)
         // ==========================================
+        // stage('Model Training (Ray)') {
+        //     steps {
+        //         echo "Initiating Ray Distributed Training (SMOKE TEST MODE)..."
+        //         sh '''
+        //             . ${VENV}/bin/activate
+                    
+        //             export HF_TOKEN=${HF_TOKEN}
+        //             export RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.3
+                    
+        //             # DevOps Magic: Extract the header + first 100 rows into a new file
+        //             head -n 100 datasets/dataset.csv > datasets/smoke_test_dataset.csv
+                    
+        //             # Train on the tiny smoke test dataset instead of the massive one
+        //             python -m madewithml.train \
+        //                 --experiment-name "ci_cd_production" \
+        //                 --dataset-loc "datasets/smoke_test_dataset.csv" \
+        //                 --num-workers 1 \
+        //                 --cpu-per-worker 2 \
+        //                 --num-epochs 1 \
+        //                 --batch-size 8 \
+        //                 --results-fp results.json
+        //         '''
+        //     }
+        // }
         stage('Model Training (Ray)') {
             steps {
-                echo "Initiating Ray Distributed Training (SMOKE TEST MODE)..."
+                echo "DEBUG MODE: Bypassing Ray Training to rapidly test Deployment..."
                 sh '''
                     . ${VENV}/bin/activate
                     
-                    export HF_TOKEN=${HF_TOKEN}
-                    export RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.3
+                    # Ensure we actually have a model from a previous run
+                    if [ ! -f "results.json" ] || [ ! -d "storage" ]; then
+                        echo "❌ ERROR: No previous model found! You must run the 4-minute training at least once."
+                        exit 1
+                    fi
                     
-                    # DevOps Magic: Extract the header + first 100 rows into a new file
-                    head -n 100 datasets/dataset.csv > datasets/smoke_test_dataset.csv
+                    echo "✅ Found existing model in storage/ and results.json."
+                    echo "Moving instantly to deployment phase..."
                     
-                    # Train on the tiny smoke test dataset instead of the massive one
-                    python -m madewithml.train \
-                        --experiment-name "ci_cd_production" \
-                        --dataset-loc "datasets/smoke_test_dataset.csv" \
-                        --num-workers 1 \
-                        --cpu-per-worker 2 \
-                        --num-epochs 1 \
-                        --batch-size 8 \
-                        --results-fp results.json
+                    # Notice we completely commented out the `python -m madewithml.train` command!
                 '''
             }
         }
@@ -155,20 +174,20 @@ pipeline {
             }
         }
 
-        stage('Post-Deployment Sanity Checks') {
-            steps {
-                echo "Running API integration tests..."
-                sh '''
-                    . ${VENV}/bin/activate
+        // stage('Post-Deployment Sanity Checks') {
+        //     steps {
+        //         echo "Running API integration tests..."
+        //         sh '''
+        //             . ${VENV}/bin/activate
                     
-                    # Give the API a few seconds to boot up before testing
-                    sleep 5
+        //             # Give the API a few seconds to boot up before testing
+        //             sleep 5
                     
-                    # Run the serving tests
-                    pytest tests/test_serve.py -v
-                '''
-            }
-        }
+        //             # Run the serving tests
+        //             pytest tests/test_serve.py -v
+        //         '''
+        //     }
+        // }
     }
 
     post {

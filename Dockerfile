@@ -1,9 +1,14 @@
 # Use the official, lightweight Python 3.10 image
 FROM python:3.10-slim
 
-# Prevent Python from writing .pyc files to disk and ensure console output is not buffered
+# Prevent Python from writing .pyc files to disk
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+
+# ==========================================
+# DEVOPS MAGIC: Tell Python where to find our code
+ENV PYTHONPATH=/app
+# ==========================================
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -11,15 +16,13 @@ WORKDIR /app
 # Copy the requirements file first to leverage Docker layer caching
 COPY requirements.txt .
 
-# Install dependencies, forcing the much smaller CPU-only version of PyTorch
-# We remove 'git' and 'curl' requirements from the image to reduce attack surface
+# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Copy the entire project code into the container
 COPY . .
 
-# Explicitly copy artifacts if they aren't caught by the general COPY . .
-# This ensures your model and validation data are physically inside the image
+# Explicitly copy artifacts
 COPY storage/ /app/storage/
 COPY datasets/ /app/datasets/
 

@@ -137,11 +137,14 @@ pipeline {
             steps {
                 echo "Rolling out new API version for RUN_ID: ${RUN_ID}..."
                 sh '''
-                    # 1. Export variables so docker-compose can read them
                     export RUN_ID=${RUN_ID}
                     export DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME}
                     
-                    # 2. Tell Compose to recreate ONLY the API container with the new image
+                    # 1. Stop and remove the old container explicitly 
+                    # This handles cases where docker-compose gets confused
+                    docker rm -f mlops_api || true
+                    
+                    # 2. Start the new API
                     docker-compose up -d --force-recreate --no-deps api
                 '''
             }

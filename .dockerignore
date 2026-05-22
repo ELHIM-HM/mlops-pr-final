@@ -12,6 +12,6 @@ __pycache__/
 .pytest_cache/
 
 # Project specific (Keep storage/mlflow because it has the baked model, but ignore massive datasets)
-datasets/
+# datasets/
 logs/
 .dvc/cache/

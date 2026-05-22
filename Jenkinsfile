@@ -5,7 +5,7 @@ pipeline {
         AWS_ACCESS_KEY_ID     = credentials('minio-access-key')
         AWS_SECRET_ACCESS_KEY = credentials('minio-secret-key')
         // MLFLOW_TRACKING_URI   = "http://mlflow:5000"
-        VENV                  = ".venv"
+        VENV                  = "/var/jenkins_home/shared_venvs/mlops_pipeline"
         // Define your Docker Hub or local registry (optional but best practice)
         DOCKER_IMAGE_NAME     = "hamza629/mlops-api"
         HF_TOKEN              = credentials('hf-token')
@@ -25,11 +25,17 @@ pipeline {
             steps {
                 echo "Setting up Python virtual environment..."
                 sh '''
-                    python3 -m venv ${VENV}
+                    # 1. Create the virtual environment ONLY if it doesn't exist yet
+                    if [ ! -d "${VENV}" ]; then
+                        echo "Creating new virtual environment..."
+                        python3 -m venv ${VENV}
+                    fi
+                    
                     . ${VENV}/bin/activate
                     pip install --upgrade pip
-                    pip install -r requirements.txt
-                    # Install testing tools
+                    
+                    # 2. Install requirements using a persistent cache
+                    pip install --cache-dir /var/jenkins_home/.cache/pip -r requirements.txt
                     pip install pytest flake8
                 '''
             }

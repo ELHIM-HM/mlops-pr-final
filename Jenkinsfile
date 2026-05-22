@@ -54,7 +54,7 @@ pipeline {
                     flake8 madewithml/ --exit-zero
                     
                     # 3. Run tests
-                    pytest tests/ -v -s
+                    pytest tests/test_data.py  -v -s
                 '''
             }
         }

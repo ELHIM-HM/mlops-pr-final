@@ -1,20 +1,20 @@
 import pytest
-from fastapi.testclient import TestClient
+import requests
 
-# Bypass Ray Serve Pickling Bug during tests
-import ray.serve
-ray.serve.ingress = lambda app: lambda cls: cls
-ray.serve.deployment = lambda *args, **kwargs: lambda cls: cls
-
-from madewithml.serve import app
-
-client = TestClient(app)
+# The API is running inside Docker and mapped to port 8000 on the host
+BASE_URL = "http://localhost:8000"
 
 def test_health_check():
-    response = client.get("/")
+    """Ensure the deployed root endpoint returns a 200 OK status."""
+    response = requests.get(f"{BASE_URL}/")
     assert response.status_code == 200
+    assert response.json()["status-code"] == 200
+    assert "environment" in response.json()
 
 def test_predict_validation_error():
+    """Ensure the deployed API rejects bad payloads."""
     bad_payload = {"title": "My Machine Learning Project"}
-    response = client.post("/predict/", json=bad_payload)
+    
+    response = requests.post(f"{BASE_URL}/predict/", json=bad_payload)
+    
     assert response.status_code == 422

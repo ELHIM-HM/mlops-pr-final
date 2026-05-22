@@ -74,19 +74,20 @@ pipeline {
         // ==========================================
         stage('Model Training (Ray)') {
             steps {
-                echo "Initiating Ray Distributed Training..."
+                echo "Initiating Ray Distributed Training (SMOKE TEST MODE)..."
                 sh '''
                     . ${VENV}/bin/activate
                     
                     export HF_TOKEN=${HF_TOKEN}
-                    
-                    # Hard-limit Ray's internal memory storage to prevent OOM crashes
                     export RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.3
                     
-                    # Extreme diet settings for CI/CD pipeline validation
+                    # DevOps Magic: Extract the header + first 100 rows into a new file
+                    head -n 20 datasets/dataset.csv > datasets/smoke_test_dataset.csv
+                    
+                    # Train on the tiny smoke test dataset instead of the massive one
                     python -m madewithml.train \
                         --experiment-name "ci_cd_production" \
-                        --dataset-loc "datasets/dataset.csv" \
+                        --dataset-loc "datasets/smoke_test_dataset.csv" \
                         --num-workers 1 \
                         --cpu-per-worker 2 \
                         --num-epochs 1 \
@@ -117,42 +118,31 @@ pipeline {
         // ==========================================
         // PHASE 3: CONTINUOUS DEPLOYMENT (CD)
         // ==========================================
-        stage('Build, Tag, & Push Docker Image') {
+        stage('Build Local Docker Image') {
             steps {
-                echo "Building API container locked to RUN_ID: ${RUN_ID}"
-                
-                // Securely inject the credentials we saved in Jenkins
-                withCredentials([usernamePassword(credentialsId: 'docker-registry-creds', passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER')]) {
-                    sh '''
-                        # 1. Log in to the private registry (using stdin for security)
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        
-                        # If using GHCR or AWS, append the registry URL to the login command:
-                        # echo "$DOCKER_PASS" | docker login ghcr.io -u "$DOCKER_USER" --password-stdin
-                        
-                        # 2. Build the Docker image
-                        docker build -t ${DOCKER_IMAGE_NAME}:${RUN_ID} .
-                        
-                        # 3. Tag it as the "latest" version
-                        docker tag ${DOCKER_IMAGE_NAME}:${RUN_ID} ${DOCKER_IMAGE_NAME}:latest
-                        
-                        # 4. Push the specific version and the latest version to your private repo
-                        docker push ${DOCKER_IMAGE_NAME}:${RUN_ID}
-                        docker push ${DOCKER_IMAGE_NAME}:latest
-                    '''
-                }
+                echo "Building API container locally for RUN_ID: ${RUN_ID}"
+                sh '''
+                    # 1. Build the Docker image locally
+                    docker build -t ${DOCKER_IMAGE_NAME}:${RUN_ID} .
+                    
+                    # 2. Tag it as the "latest" version for local use
+                    docker tag ${DOCKER_IMAGE_NAME}:${RUN_ID} ${DOCKER_IMAGE_NAME}:latest
+                    
+                    echo "Image built locally. Skipping Docker Hub push to save time."
+                '''
             }
         }
 
         stage('Deploy to Production') {
             steps {
-                echo "Rolling out new API version..."
+                echo "Rolling out new API version for RUN_ID: ${RUN_ID}..."
                 sh '''
-                    # Stop the current API
-                    docker-compose down api
+                    # 1. Export variables so docker-compose can read them
+                    export RUN_ID=${RUN_ID}
+                    export DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME}
                     
-                    # Start the new API using the exact environment variable
-                    docker-compose up -d api
+                    # 2. Tell Compose to recreate ONLY the API container with the new image
+                    docker-compose up -d --force-recreate --no-deps api
                 '''
             }
         }

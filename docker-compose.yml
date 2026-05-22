@@ -53,6 +53,7 @@ services:
   # ==========================================
   api:
     build: .
+    image: ${DOCKER_IMAGE_NAME:-hamza629/mlops-api}:${RUN_ID:-latest}
     container_name: mlops_api
     ports:
       - "8000:8000"
